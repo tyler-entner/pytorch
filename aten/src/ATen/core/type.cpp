@@ -859,6 +859,10 @@ UnionType::UnionType(std::vector<TypePtr> types, TypeKind kind) : Type(kind) {
 
   standardizeUnion(types_);
 
+  if (types_.size() == 1) {
+    int x = 5;
+  }
+
   TORCH_INTERNAL_ASSERT(types_.size() != 1, "After type unification was"
                         " performed, the Union only has one type. "
                         "Use the common supertype instead of creating "
