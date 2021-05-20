@@ -24,6 +24,17 @@ struct Function;
 
 namespace c10 {
 
+// Better type comparison, since `operator=` doesn't work if the
+// pointers are different. We compare on Kind (fast), then compare by
+// the serialized representation (slower, but guaranteed to break ties).
+// This is a struct so that it can be used in certain std container
+// types.
+struct TypeEqual {
+  bool operator()(const TypePtr& a, const TypePtr& b) const {
+    return a->kind() == b->kind() && a->str() == b->str();
+  }
+};
+
 struct IValue;
 struct FunctionSchema;
 struct NamedType;
@@ -124,11 +135,13 @@ struct TORCH_API UnionType : public Type {
     return has_free_variables_;
   }
 
-  UnionTypePtr union_of(std::vector<TypePtr>& rhs_types) const;
-  UnionTypePtr union_of(const UnionTypePtr rhs) const;
+  UnionTypePtr unionOf(std::vector<TypePtr>& rhs_types) const;
+  UnionTypePtr unionOf(const UnionTypePtr rhs) const;
 
-  UnionTypePtr intersection_of(std::vector<TypePtr>& rhs_types) const;
-  UnionTypePtr intersection_of(const UnionTypePtr rhs) const;
+  UnionTypePtr intersectionOf(std::vector<TypePtr>& rhs_types) const;
+  UnionTypePtr intersectionOf(const UnionTypePtr rhs) const;
+
+  UnionTypePtr withoutNone() const;
 
   c10::optional<TypePtr> to_optional() const;
 
@@ -1610,7 +1623,7 @@ inline at::ScalarType scalarTypeFromJitType(const c10::TypePtr& type) {
 }
 
 // Attempt to find the correct supertype of t1 and t2. If none is found then
-// nullopt will be returned if default_to_any is false, and Any will be returned
+// nullopt will be returned if default_to_union is false, and Any will be returned
 // if it is true. If t1 == t2, or t1 is a type refinement of t2,
 // then t2 will be returned (and vice versa).
 // Two different tensortypes will return dynamic.
@@ -1619,11 +1632,12 @@ inline at::ScalarType scalarTypeFromJitType(const c10::TypePtr& type) {
 TORCH_API c10::optional<TypePtr> unifyTypes(
     const TypePtr& t1,
     const TypePtr& t2,
-    bool default_to_any=false);
+    bool default_to_union=false);
 
 TORCH_API c10::optional<TypePtr> unifyTypeList(
     at::ArrayRef<TypePtr> elements,
-    std::ostream& why_not);
+    std::ostream& why_not,
+    bool default_to_union=false);
 
 namespace detail {
 template <typename T>

@@ -326,11 +326,11 @@ c10::optional<TypePtr> unifyTypesImpl(const TypePtr& t1, const TypePtr& t2) {
   return c10::nullopt;
 }
 
-c10::optional<TypePtr> unifyTypes(const TypePtr& t1, const TypePtr& t2, bool default_to_any) {
+c10::optional<TypePtr> unifyTypes(const TypePtr& t1, const TypePtr& t2, bool default_to_union) {
   auto unified = unifyTypesImpl(t1, t2);
 
-  if (default_to_any && !unified) {
-    return AnyType::get();
+  if (default_to_union && !unified) {
+    return UnionType::create({t1, t2});
   }
 
   return unified;
@@ -338,7 +338,8 @@ c10::optional<TypePtr> unifyTypes(const TypePtr& t1, const TypePtr& t2, bool def
 
 c10::optional<TypePtr> unifyTypeList(
     at::ArrayRef<TypePtr> elements,
-    std::ostream& why_not) {
+    std::ostream& why_not,
+    bool default_to_union) {
   if (elements.size() == 0) {
     why_not << "Cannot get unified type from empty list";
     return c10::nullopt;
@@ -792,16 +793,6 @@ void flattenUnion(TypePtr& type, std::vector<TypePtr>& types) {
   }
 }
 
-// Custom comparison for Union type auxiliary functions. We compare on
-// Kind (fast), then compare by the serialized representation
-// (slower, but guaranteed to break ties). We need to have the
-// TypeEqual struct for use in a `std::unordered_map` later.
-struct TypeEqual {
-  bool operator()(const TypePtr& a, const TypePtr& b) const {
-    return a->kind() == b->kind() && a->str() == b->str();;
-  }
-};
-
 // Helper function for `standardizeUnion`
 void filterDuplicateSubtypes(std::vector<TypePtr>& types) {
   // If we call `unifyTypes(T, None)`, then `unifyTypes` returns
@@ -953,21 +944,21 @@ std::string UnionType::str() const {
   return ss.str();
 }
 
-UnionTypePtr UnionType::union_of(std::vector<TypePtr>& rhs_types) const {
-  return union_of({rhs_types});
+UnionTypePtr UnionType::unionOf(std::vector<TypePtr>& rhs_types) const {
+  return unionOf({rhs_types});
 }
 
-UnionTypePtr UnionType::union_of(const UnionTypePtr rhs) const {
+UnionTypePtr UnionType::unionOf(const UnionTypePtr rhs) const {
   std::vector<TypePtr> new_types = this->types().vec();
   new_types.insert(new_types.end(), rhs->types().begin(), rhs->types().end());
   return UnionType::create(std::move(new_types));
 }
 
-UnionTypePtr UnionType::intersection_of(std::vector<TypePtr>& rhs_types) const {
-  return intersection_of({rhs_types});
+UnionTypePtr UnionType::intersectionOf(std::vector<TypePtr>& rhs_types) const {
+  return intersectionOf({rhs_types});
 }
 
-UnionTypePtr UnionType::intersection_of(const UnionTypePtr rhs) const {
+UnionTypePtr UnionType::intersectionOf(const UnionTypePtr rhs) const {
   std::vector<TypePtr> types;
   std::unordered_set<TypePtr, std::hash<TypePtr>, TypeEqual> dict{rhs->types().begin(), rhs->types().end()};
   for (auto lhs_type : this->types()) {
@@ -982,6 +973,17 @@ UnionTypePtr UnionType::intersection_of(const UnionTypePtr rhs) const {
       }
     }
   }
+  return UnionType::create(std::move(types));
+}
+
+UnionTypePtr UnionType::withoutNone() const {
+  std::vector<TypePtr> types;
+  types.reserve(types_.size() - 1);
+  std::copy_if(types_.begin(), types_.end(),
+              std::back_inserter(types),
+              [](const TypePtr t) {
+                return !t->isSubtypeOf(NoneType::get());
+              });
   return UnionType::create(std::move(types));
 }
 
