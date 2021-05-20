@@ -918,8 +918,8 @@ bool UnionType::isSubtypeOfExt(const TypePtr& rhs_, std::ostream* why_not) const
                       TypeEqual())) {
       return true;
     }
-    // Final O(n^2) check since the vector equality comparison above
-    // won't handle subtyping relationships
+    // Final O(n^2) check since the vector comparison will falsely
+    // flag subtypes as not equal
     return std::all_of(this->types_.begin(), this->types_.end(),
       [&](TypePtr this_type) -> bool {
         return this_type->isSubtypeOf(union_rhs);
